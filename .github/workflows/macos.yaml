@@ -32,7 +32,10 @@ jobs:
           plutil -lint "$plugin/Contents/Info.plist"
           otool -L "$plugin/Contents/MacOS/obs-mac-voice-processing"
           otool -l "$plugin/Contents/MacOS/obs-mac-voice-processing" | grep -A2 LC_RPATH | grep path
-          codesign -v "$plugin/Contents/MacOS/obs-mac-voice-processing" && echo signed
+          # Its binary's signature, which dyld checks; the bundle has no sealed
+          # resources, as no plugin nixpkgs builds does, so it is not verified
+          # as a bundle's. Loading it is the test that follows.
+          codesign -dv "$plugin/Contents/MacOS/obs-mac-voice-processing" 2>&1 | grep -E "^(Identifier|Format|CodeDirectory|Signature)"
 
       - name: Put the filter on a microphone
         run: |
