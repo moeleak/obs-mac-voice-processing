@@ -1,0 +1,42 @@
+# Builds NixOS/nixpkgs#591713's obs-studio and the plugins that now evaluate
+# on aarch64-darwin, in a relaxed sandbox, as nixpkgs-review-gha does.
+name: nixpkgs-591713
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 300
+    env:
+      NIXPKGS: github:moeleak/nixpkgs/a1eb721baa94c4cec09d20316e5a30aae9f8cc0a
+    steps:
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            sandbox = relaxed
+      - name: Build obs-studio
+        run: nix build -L --no-link "$NIXPKGS#legacyPackages.aarch64-darwin.obs-studio"
+      - name: Build the plugins
+        run: |
+          plugins="input-overlay obs-3d-effect obs-aitum-multistream obs-backgroundremoval obs-bilibili-stream
+            obs-command-source obs-dir-watch-media obs-gradient-source obs-hyperion obs-livesplit-one obs-markdown
+            obs-move-transition obs-multi-rtmp obs-mute-filter obs-noise obs-retro-effects obs-rgb-levels
+            obs-scale-to-sound obs-scene-as-transition obs-shaderfilter obs-source-record obs-source-switcher
+            obs-stroke-glow-shadow obs-teleport obs-text-pthread obs-transition-table obs-vaapi
+            obs-vertical-canvas obs-vintage-filter obs-websocket pixel-art"
+          attrs=""
+          for p in $plugins; do attrs="$attrs $NIXPKGS#legacyPackages.aarch64-darwin.obs-studio-plugins.$p"; done
+          nix build --no-link --keep-going $attrs > build.log 2>&1 || true
+          echo "== per plugin"
+          for p in $plugins; do
+            if nix build --no-link "$NIXPKGS#legacyPackages.aarch64-darwin.obs-studio-plugins.$p" > /dev/null 2>&1; then
+              echo "ok   $p"
+            else
+              echo "FAIL $p"
+              nix log "$NIXPKGS#legacyPackages.aarch64-darwin.obs-studio-plugins.$p" 2>/dev/null | grep -iE "error|not found|unsupported|CMake Error" | head -5 | sed "s/^/     $p: /"
+            fi
+          done
