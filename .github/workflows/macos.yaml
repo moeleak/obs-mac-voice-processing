@@ -1,0 +1,57 @@
+# Builds the plugin and OBS with it from the flake, on aarch64-darwin, and
+# puts the filter on a microphone without OBS's frontend, which crashes on
+# GitHub's headless macOS VMs: in the app as wrapOBS makes it, and in a copy
+# of it as Home Manager's copyApps makes one.
+name: macOS
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build and test
+    runs-on: macos-26
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Build
+        run: nix build -L --keep-going .#obs
+
+      - name: Inspect the plugin
+        run: |
+          plugin=result/Applications/OBS.app/Contents/PlugIns/obs-mac-voice-processing.plugin
+          ls -lR "$plugin/"
+          plutil -lint "$plugin/Contents/Info.plist"
+          otool -L "$plugin/Contents/MacOS/obs-mac-voice-processing"
+          otool -l "$plugin/Contents/MacOS/obs-mac-voice-processing" | grep -A2 LC_RPATH | grep path
+          codesign -v "$plugin/Contents/MacOS/obs-mac-voice-processing" && echo signed
+
+      - name: Put the filter on a microphone
+        run: |
+          obs=$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#obs-studio)
+          simde=$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#simde)
+          .github/scripts/test-voice-processing result/Applications/OBS.app \
+            "$obs/Frameworks/libobs.framework/Headers" "$simde/include"
+
+      - name: Copy OBS as Home Manager does, and put the filter on a microphone again
+        run: |
+          nixpkgs="(builtins.getFlake \"git+file://$PWD\").inputs.nixpkgs.legacyPackages.aarch64-darwin"
+          apps=$(nix build --no-link --print-out-paths --impure --expr \
+            "${nixpkgs}.buildEnv { name = \"apps\"; paths = [ (builtins.storePath $(readlink result)) ]; pathsToLink = [ \"/Applications\" ]; }")
+          target="$HOME/Applications/Home Manager Apps"
+          mkdir -p "$target"
+          rsync=$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#rsync)/bin/rsync
+          "$rsync" --recursive --checksum --perms --links --copy-unsafe-links --specials --delete --chmod=+w \
+            "$apps/Applications/" "$target"
+          obs=$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#obs-studio)
+          simde=$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#simde)
+          .github/scripts/test-voice-processing "$target/OBS.app" \
+            "$obs/Frameworks/libobs.framework/Headers" "$simde/include"

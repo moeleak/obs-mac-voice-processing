@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Builds test-voice-processing.c against libobs's headers ($2) and the libobs
+# of OBS.app ($1), with the SIMDe headers in $3, runs it, and checks its log.
+set -euo pipefail
+
+app=$(cd "$1" && pwd)
+headers=$2
+simde=$3
+here=$(cd "$(dirname "$0")" && pwd)
+work=$(mktemp -d)
+
+# Generated in OBS's build tree, and not always installed with the headers.
+if [ ! -f "$headers/obsconfig.h" ]; then
+	printf '#pragma once\n#define OBS_RELEASE_CANDIDATE 0\n#define OBS_BETA 0\n' > "$work/obsconfig.h"
+fi
+clang -std=gnu17 -I "$headers" -I "$work" -isystem "$simde" \
+	-F "$app/Contents/Frameworks" -framework libobs -Wl,-rpath,"$app/Contents/Frameworks" \
+	"$here/test-voice-processing.c" -o "$work/test"
+
+"$work/test" "$app" 2>&1 | tee "$work/log"
+grep -q "test: released" "$work/log"
+
+# Each round, it starts when added, when its settings change and when enabled
+# again, and only then; and once more for the long one.
+starts=$(grep -c "started on microphone" "$work/log" || true)
+echo "voice processing started $starts times"
+[ "$starts" -eq 10 ]
+
+# How the buffer went, and what the unit captured, once at least.
+grep "in the last 10 s" "$work/log"
+grep "the unit captured" "$work/log"
+
+# The CoreAudio source on the same microphone keeps capturing while the unit
+# runs.
+if grep "audio retrieval failed" "$work/log"; then
+	echo "the CoreAudio source failed to capture"
+	exit 1
+fi
+
+grep -q "test: memory leaks: 0$" "$work/log"

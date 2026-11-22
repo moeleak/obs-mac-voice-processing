@@ -1,0 +1,27 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1795347632,
+        "narHash": "sha256-/8JWiFEisuyxUHj9IU3tpATfSgkmDf2MLBIebCJsM/c=",
+        "owner": "moeleak",
+        "repo": "nixpkgs",
+        "rev": "f5085b5dc2aff85832f715ab12df28c873f06749",
+        "type": "github"
+      },
+      "original": {
+        "owner": "moeleak",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
