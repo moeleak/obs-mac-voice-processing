@@ -2,6 +2,7 @@
   lib,
   stdenv,
   cmake,
+  darwin,
   obs-studio,
 }:
 
@@ -19,7 +20,13 @@ stdenv.mkDerivation {
     ];
   };
 
-  nativeBuildInputs = [ cmake ];
+  nativeBuildInputs = [
+    cmake
+    # Installing the bundle rewrites the binary's rpath, which leaves its
+    # linker signature invalid: signed again after fixup, as obs-studio's own
+    # plugins are.
+    darwin.autoSignDarwinBinariesHook
+  ];
 
   buildInputs = [ obs-studio ];
 
